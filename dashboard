@@ -4,7 +4,8 @@ clientsDir="/sv/clients"
 client=""
 cmd=""
 
-#WARNING for testing make sure you are using dummy commands. 
+#WARNING for testing make sure you are using dummy commands.
+#command for bashrc bindkey -s '^e' 'dashboard.sh^M'
 
 while getopts c: flag
 do
