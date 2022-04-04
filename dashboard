@@ -4,103 +4,153 @@ clientsDir="/sv/clients"
 client=""
 cmd=""
 
-#WARNING for testing make sure you are using dummy commands.
-#command for bashrc bindkey -s '^e' 'dashboard.sh^M'
-
 while getopts c: flag
 do
-	case "${flag}" in
-		c) client=${OPTARG};;
-	esac
+        case "${flag}" in
+                c) client=${OPTARG};;
+        esac
 done
 
 function main(){
-	if [[ ! -z "$client" ]]; then
-		setCommand
-		$cmd
-		cd "$clientsDir/$client"
-		$SHELL
-	elif [[ "$(pwd)" =~ /sv/clients/ ]]; then
-		client="$(pwd | sed 's|/sv/clients/||' | awk -F/ '{print $1}')"
-		setCommand
-		echo "Running commands for $client..."
-		$cmd
-	else
-		echo "You have been moved to the selected client..."
-		client=$(ls "$clientsDir" | fzf )
-		setCommand
-		$cmd
-		cd "$clientsDir/$client"
-		$SHELL
-	fi
+        if [[ ! -z "$client" ]]; then
+                #setCommand
+                # $cmd
+                echo "Dashboard"
+                #cd "$clientsDir/$client"
+                #$SHELL
+        elif [[ "$(pwd)" =~ /sv/clients/ ]]; then
+                client="$(pwd | sed 's|/sv/clients/||' | awk -F/ '{print $1}')"
+                setCommand
+                if [[ $cmd != "" ]]; then
+                        echo "Running commands for $client..."
+                        $cmd
+                fi
+        else
+                echo "Dashboard"
+                #echo "You have been moved to the selected client..."
+                #client=$(ls "$clientsDir" | fzf )
+                #setCommand
+                #$cmd
+                #cd "$clientsDir/$client"
+                #$SHELL
+        fi
   exit 0
 }
 
 function setCommand(){
-	# search for all the commands available in this file
-	# except the one on the following this line
-	search="$(awk -F: '/run/{print $2}' "$0"| grep -v "/run/" | fzf --prompt="Run command on $client: ")"
-	# based on the selection, grab the actual function located on the next line
-	cmd="$(awk -v s="$search" '$0~s {getline; print $2}' "$0" | cut -d\( -f1 )"
+        # search for all the commands available in this file
+        # except the one on the following this line
+                search="$(awk -F: '/run/{print $2}' "$0"| grep -v "/run/" | fzf --prompt="Run command on $client: ")"
+                # based on the selection, grab the actual function located on the next line
+        if [[ $search != "" ]]; then
+                cmd="$(awk -v s="$search" '$0~s {getline; print $2}' "$0" | cut -d\( -f1 )"
+        fi
 }
 
 # Commands to run start
 
-# run:Git Stage
+# run:Git Stage Test
 function git_stage() {
-	echo "Staging files... $client"
+        echo "Staging files... $client"
 }
 
-# run:Git Reset
+# run:Git Reset Test
 function git_reset() {
-	echo "Reseting files...$client"
+        echo "Reseting files...$client"
 }
 
 # run:Downsync Live
 function downsync_live(){
-	echo "Downsyncing $client database..."
-	# sudo sv copyClientDatabase $client live local
+        read -p "Are you sure you want to downsync $client from live to local? " -n 1 -r
+        echo # new line
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sudo sv copyClientDatabase $client live local
+        fi
 }
 
 # run:Downsync Staging
 function downsync_staging(){
-	echo "Downsyncing $client database..."
-	# sudo sv copyClientDatabase $client staging local
+        read -p "Are you sure you want to downsync $client from staging to local? " -n 1 -r
+        echo # new line
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sudo sv copyClientDatabase $client staging local
+        fi
+}
+
+
+# run:Backup Live
+function backup_live() {
+        echo "Backing up $client database from live..."
+        sudo sv backupDb live_cluster1 client_$client
 }
 
 # run:Backup Staging
 function backup_staging() {
-	echo "Backing up $client database..."
-	# sudo sv backupDb staging_cluster1 client_$client
+        echo "Backing up $client database from staging..."
+        sudo sv backupDb staging_cluster1 client_$client
 }
 
-# run:Commit
-function commit() {
-	echo "Starting SVN commit...$client"
+
+# run:Backup Local
+function backup_local() {
+        echo "Backing up $client database from local"
+        sudo sv backupDb local_cluster1 client_$client
+}
+
+# run:Add
+function add() {
+        git add $(git status -s | fzf --multi | awk '{print $2}' )
+}
+
+# run:Delete Branch
+function delete(){
+        result=$(git branch -a --color=always | grep -v '/HEAD\s' | sort |
+        fzf --height 50% --multi --border --ansi --tac --preview-window right:70% \
+        --preview 'git log --oneline --graph --date=short --pretty="format:%C(auto)%cd %h%d %s" $(sed s/^..// <<< {} | cut -d" " -f1) | head -'$LINES |
+    sed 's/^..//' | cut -d' ' -f1)
+
+        if [[ $result != "" ]]; then
+                git branch -d "$result"
+        fi
+}
+
+# run:Checkout
+function gcb() {
+  result=$(git branch -a --color=always | grep -v '/HEAD\s' | sort |
+    fzf --height 50% --border --ansi --tac --preview-window right:70% \
+      --preview 'git log --oneline --graph --date=short --pretty="format:%C(auto)%cd %h%d %s" $(sed s/^..// <<< {} | cut -d" " -f1) | head -'$LINES |
+    sed 's/^..//' | cut -d' ' -f1)
+
+  if [[ $result != "" ]]; then
+    if [[ $result == remotes/* ]]; then
+      git checkout --track $(echo $result | sed 's#remotes/##')
+    else
+      git checkout "$result"
+    fi
+  fi
 }
 
 # run:Deploy Live
 function deploy_live() {
-	read -p "Are you sure you want to deploy $client to live? " -n 1 -r
-	echo # new line
-	if [[ $REPLY =~ ^[Yy]$ ]]; then
-		echo "deploying $client to live"
-	fi
+        read -p "Are you sure you want to deploy $client to live? " -n 1 -r
+        echo # new line
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sudo sv deployClient $client live
+        fi
 }
 
 # run:Deploy Staging
 function deploy_staging() {
-	read -p "Are you sure you want to deploy $client to staging env? " -n 1 -r
-	echo # new line
-	if [[ $REPLY =~ ^[Yy]$ ]]; then
-		echo "deploying $client to staging"
-		# sudo sv deployClient $client staging
-	fi
+        read -p "Are you sure you want to deploy $client to staging? " -n 1 -r
+        echo # new line
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sudo sv deployClient $client staging
+        fi
 }
 
 # run:Test Command
 function test(){
-	echo "This is a test command...$client"
+        echo "This is a test command...$client"
 }
 
 main
